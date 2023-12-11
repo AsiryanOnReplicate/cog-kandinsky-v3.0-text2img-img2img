@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+
+# Run this before you deploy it on replicate
+import os
+import sys
+from typing import List
+from diffusers import KandinskyV22Pipeline, KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline, KandinskyV22PriorPipeline
+import torch
+from transformers import CLIPVisionModelWithProjection
+from diffusers.models import UNet2DConditionModel
+
+# append project directory to path so predict.py can be imported
+sys.path.append('.')
+from predict import MODEL_CACHE
+
+if not os.path.exists(MODEL_CACHE):
+    os.makedirs(MODEL_CACHE)
+
+"""Load the model into memory to make running multiple predictions efficient"""
+device = torch.device("cuda:0")
+
+"""Models"""
+image_encoder = (
+    CLIPVisionModelWithProjection.from_pretrained(
+        "kandinsky-community/kandinsky-2-2-prior",
+        subfolder="image_encoder",
+        cache_dir=MODEL_CACHE,
+    )
+    .half()
+    .to(device)
+)
+unet = (
+    UNet2DConditionModel.from_pretrained(
+        "kandinsky-community/kandinsky-2-2-decoder",
+        subfolder="unet",
+        cache_dir=MODEL_CACHE,
+    )
+    .half()
+    .to(device)
+)
+prior = KandinskyV22PriorPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-prior",
+    image_encoder=image_encoder,
+    torch_dtype=torch.float16,
+    cache_dir=MODEL_CACHE,
+).to(device)
+text2img_pipe = KandinskyV22Pipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-decoder",
+    unet=unet,
+    torch_dtype=torch.float16,
+    cache_dir=MODEL_CACHE,
+).to(device)
+img2img_pipe = KandinskyV22Img2ImgPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-decoder",
+    unet=unet,
+    torch_dtype=torch.float16,
+    cache_dir=MODEL_CACHE,
+).to(device)
+unet_inpainting = (
+    UNet2DConditionModel.from_pretrained(
+        "kandinsky-community/kandinsky-2-2-decoder-inpaint",
+        subfolder="unet",
+        cache_dir=MODEL_CACHE,
+        in_channels=9,
+        low_cpu_mem_usage=False,
+        ignore_mismatched_sizes=True
+    )
+    .half()
+    .to(device)
+)
+inpainting_pipe = KandinskyV22InpaintPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-decoder-inpaint",
+    unet=unet_inpainting,
+    torch_dtype=torch.float16,
+    cache_dir=MODEL_CACHE,
+).to(device)
